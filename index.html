@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Bot Money" />
+  <meta name="theme-color" content="#0b0f14" />
+  <link rel="apple-touch-icon" href="icon.png" />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <title>Bot Money</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #141a22;
+      --border: #243041;
+      --text: #e8eef6;
+      --muted: #8b9bb0;
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 16px;
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      line-height: 1.4;
+    }
+    .wrap { max-width: 480px; margin: 0 auto; }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    header img {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+    }
+    header h1 { font-size: 1.35rem; font-weight: 700; }
+    header .sub { color: var(--muted); font-size: 0.8rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .total-label { color: var(--muted); font-size: 0.85rem; margin-bottom: 4px; }
+    .total-pnl { font-size: 2.4rem; font-weight: 800; letter-spacing: -0.02em; }
+    .total-meta { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+    .pos { color: var(--green); }
+    .neg { color: var(--red); }
+    .flat { color: var(--text); }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .row:last-child { border-bottom: none; padding-bottom: 0; }
+    .row:first-child { padding-top: 0; }
+    .name { font-weight: 600; }
+    .muted { color: var(--muted); font-size: 0.8rem; }
+    .section-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 18px 0 8px 4px;
+      font-weight: 600;
+    }
+    .trade {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 4px 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .trade:last-child { border-bottom: none; }
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: #1e293b;
+      color: var(--muted);
+      margin-right: 6px;
+    }
+    .status {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.75rem;
+      margin-top: 16px;
+    }
+    .status.error { color: var(--amber); }
+    .empty { color: var(--muted); font-size: 0.9rem; padding: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img src="icon.png" alt="Bot Money" />
+      <div>
+        <h1>Bot Money</h1>
+        <div class="sub" id="updated">Loading…</div>
+      </div>
+    </header>
+
+    <div class="card" id="total-card">
+      <div class="total-label">Total P&amp;L</div>
+      <div class="total-pnl flat" id="total-pnl">—</div>
+      <div class="total-meta" id="total-meta"></div>
+    </div>
+
+    <div class="section-title">Strategies</div>
+    <div class="card" id="strategies"></div>
+
+    <div class="section-title">Wallets</div>
+    <div class="card" id="wallets"></div>
+
+    <div class="section-title">Last trades</div>
+    <div class="card" id="trades"></div>
+
+    <div class="status" id="status">Refreshing every 60s</div>
+  </div>
+
+  <script>
+    const STATS_URL = "https://gist.githubusercontent.com/petroup2003-ui/8890baac83241b5ddd63885a0dfe9a9c/raw/stats.json";
+
+    function cls(n) {
+      if (n > 0) return "pos";
+      if (n < 0) return "neg";
+      return "flat";
+    }
+
+    function fmt(n, digits) {
+      if (typeof n !== "number" || Number.isNaN(n)) return "—";
+      const sign = n > 0 ? "+" : "";
+      return sign + n.toFixed(digits ?? 2);
+    }
+
+    function money(n) {
+      if (typeof n !== "number" || Number.isNaN(n)) return "—";
+      const sign = n > 0 ? "+" : n < 0 ? "" : "";
+      return sign + "$" + n.toFixed(2);
+    }
+
+    function render(data) {
+      const t = data.total || {};
+      const pnlEl = document.getElementById("total-pnl");
+      pnlEl.textContent = money(t.pnl) + " (" + fmt(t.pnl_pct) + "%)";
+      pnlEl.className = "total-pnl " + cls(t.pnl);
+      document.getElementById("total-meta").textContent =
+        "Equity $" + (t.equity ?? 0).toFixed(2) + " · start $" + (t.start ?? 0).toFixed(2);
+      document.getElementById("updated").textContent =
+        (data.updated || "—") + (data.tz ? " · " + data.tz : "") +
+        (data.note ? " · " + data.note : "");
+
+      const strats = data.strategies || {};
+      const stratHtml = Object.keys(strats).map(function (key) {
+        const s = strats[key];
+        const label = key === "copy" ? "Copy-trading" : key === "snipe" ? "Memecoin snipe" : key;
+        return (
+          '<div class="row">' +
+            '<div><div class="name">' + label + '</div>' +
+            '<div class="muted">Equity $' + (s.equity ?? 0).toFixed(2) +
+            ' · open ' + (s.open ?? 0) + ' · closed ' + (s.closed ?? 0) + '</div></div>' +
+            '<div class="' + cls(s.pnl) + '" style="font-weight:700;text-align:right">' +
+              money(s.pnl) + '<br><span class="muted">' + fmt(s.pnl_pct) + '%</span>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join("");
+      document.getElementById("strategies").innerHTML = stratHtml || '<div class="empty">No strategies</div>';
+
+      const wallets = data.wallets || [];
+      document.getElementById("wallets").innerHTML = wallets.length
+        ? wallets.map(function (w) {
+            return (
+              '<div class="row">' +
+                '<div><div class="name">' + (w.name || "?") + '</div>' +
+                '<div class="muted">' + (w.trades ?? 0) + ' trades</div></div>' +
+                '<div class="' + cls(w.pnl) + '" style="font-weight:700">' + money(w.pnl) + '</div>' +
+              '</div>'
+            );
+          }).join("")
+        : '<div class="empty">No wallets yet</div>';
+
+      const trades = data.last_trades || [];
+      document.getElementById("trades").innerHTML = trades.length
+        ? trades.map(function (tr) {
+            const pnl = typeof tr.pnl === "number" ? tr.pnl : null;
+            const side = tr.side || tr.action || "";
+            const token = tr.token || tr.symbol || tr.name || "—";
+            const when = tr.time || tr.at || tr.when || "";
+            const strat = tr.strategy || tr.source || "";
+            return (
+              '<div class="trade">' +
+                '<div><span class="badge">' + strat + '</span>' +
+                  '<strong>' + side + '</strong> ' + token +
+                  (when ? '<div class="muted">' + when + '</div>' : '') +
+                '</div>' +
+                '<div class="' + (pnl === null ? "flat" : cls(pnl)) + '" style="font-weight:700;text-align:right">' +
+                  (pnl === null ? (tr.price != null ? "$" + Number(tr.price).toFixed(4) : "—") : money(pnl)) +
+                '</div>' +
+              '</div>'
+            );
+          }).join("")
+        : '<div class="empty">No trades yet — waiting for paper fills</div>';
+    }
+
+    async function load() {
+      const status = document.getElementById("status");
+      try {
+        const res = await fetch(STATS_URL + "?t=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        render(data);
+        status.className = "status";
+        status.textContent = "Updated · next refresh in 60s";
+      } catch (e) {
+        status.className = "status error";
+        status.textContent = "Could not load stats — retrying…";
+      }
+    }
+
+    load();
+    setInterval(load, 60000);
+  </script>
+</body>
+</html>
